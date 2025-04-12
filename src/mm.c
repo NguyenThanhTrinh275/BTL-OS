@@ -86,56 +86,42 @@
                      struct framephy_struct *frames, // list of the mapped frames
                      struct vm_rg_struct *ret_rg)    // return mapped region, the real mapped fp
  {                                                   // no guarantee all given pages are mapped
-  // 
-  struct framephy_struct *fpit = malloc(sizeof(struct framephy_struct));
-  //
+  
   int pgit = 0;
   int pgn = PAGING_PGN(addr);
+  struct framephy_struct *fpit = frames;
  
    /* TODO: update the rg_end and rg_start of ret_rg 
    //ret_rg->rg_end =  ....
    //ret_rg->rg_start = ...
    //ret_rg->vmaid = ...
    */
-  ret_rg->rg_end = ret_rg->rg_start = addr;
-  fpit->fp_next = frames;
+  ret_rg->rg_start = addr;
+  ret_rg->rg_end = addr + pgnum * PAGING_PAGESZ;
  
   /* TODO map range of frame to address space
     *      [addr to addr + pgnum*PAGING_PAGESZ
     *      in page table caller->mm->pgd[]
     */
   //
-  while (fpit->fp_next != NULL && pgit < pgnum) {
-    pgn = PAGING_PGN(addr);
-    // uint32_t * pte = malloc(sizeof(uint32_t));
-    uint32_t *pte = &caller->mm->pgd[pgn];
-    // init_pte(pte, 1, fpit->fp_next->fpn, 0, 0, 0, 0);
-    pte_set_fpn(pte, fpit->fp_next->fpn); // ĐỔI CONTENT TRONG PTE
-  /* Tracking for later page replacement activities (if needed)
-    * Enqueue new usage page */
-    enlist_pgn_node(&caller->mm->fifo_pgn, pgn);
-    pgit++;
-    fpit->fp_next = fpit->fp_next->fp_next;
-    addr += PAGING_PAGESZ;
-    ret_rg->rg_end = addr;
-  }
-  while (pgit < pgnum) { // insert vào memswp
-    int swpfrm;
-    pgn = PAGING_PGN(addr);
-    uint32_t *pte = &caller->mm->pgd[pgn];
-    if (MEMPHY_get_freefp(caller->active_mswp, &swpfrm) == -1) {
-      caller->mm->mmap->vm_end += pgit * PAGING_PAGESZ;
-      return -1;
+  for (pgit = 0; pgit < pgnum; pgit++) {
+    if (fpit == NULL) {
+        return -1; // Không đủ khung trang
     }
-    pte_set_swap(pte, 0, swpfrm);
-    addr += PAGING_PAGESZ;
-    ret_rg->rg_end = addr;
-    pgit++;
+
+    uint32_t *pte = &caller->mm->pgd[pgn + pgit];
+    init_pte(pte, 1, fpit->fpn, 0, 0, 0, 0); // present=1, fpn=fpit->fpn, không swap
+
+    // Cập nhật owner của khung trang
+    fpit->owner = caller->mm;
+
+    /* Tracking for later page replacement */
+    enlist_pgn_node(&caller->mm->fifo_pgn, pgn + pgit);
+
+    fpit = fpit->fp_next; // Chuyển sang khung trang tiếp theo
   }
-  caller->mm->mmap->vm_end += pgnum * PAGING_PAGESZ; 
-  //
   return 0;  
- }
+}
  
  /*
   * alloc_pages_range - allocate req_pgnum of frame in ram
@@ -147,32 +133,58 @@
  int alloc_pages_range(struct pcb_t *caller, int req_pgnum, struct framephy_struct **frm_lst)
  {
    int pgit, fpn;
-   struct framephy_struct *newfp_str = NULL;
+   struct framephy_struct *newfp = NULL;
+   struct framephy_struct *tail = NULL;
  
    /* TODO: allocate the page 
    //caller-> ...
    //frm_lst-> ...
    */
-  
+  *frm_lst = NULL;
 
  
-   for (pgit = 0; pgit < req_pgnum; pgit++)
-   {
-   /* TODO: allocate the page 
-    */
-     if (MEMPHY_get_freefp(caller->mram, &fpn) == 0)
-     {
-      newfp_str = malloc(sizeof(struct framephy_struct));
-      newfp_str->fpn = fpn;
-      newfp_str->owner = caller->mm;
-      newfp_str->fp_next = *frm_lst;
-      *frm_lst = newfp_str;
-     }
-     else
-     { // TODO: ERROR CODE of obtaining somes but not enough frames
-      return -1;
-     }
-   }
+  for (pgit = 0; pgit < req_pgnum; pgit++) {
+    if (MEMPHY_get_freefp(caller->mram, &fpn) != 0) {
+        // Không đủ khung trang, giải phóng các khung đã cấp phát
+        while (*frm_lst != NULL) {
+            newfp = *frm_lst;
+            *frm_lst = newfp->fp_next;
+            MEMPHY_put_freefp(caller->mram, newfp->fpn);
+            free(newfp);
+        }
+        return -3000; // Out of memory
+    }
+
+    // Tạo node mới cho khung trang
+    newfp = malloc(sizeof(struct framephy_struct));
+    if (newfp == NULL) {
+        // Lỗi cấp phát bộ nhớ, giải phóng các khung đã cấp phát
+        while (*frm_lst != NULL) {
+            newfp = *frm_lst;
+            *frm_lst = newfp->fp_next;
+            MEMPHY_put_freefp(caller->mram, newfp->fpn);
+            free(newfp);
+        }
+        return -1; // Lỗi cấp phát
+    }
+
+    newfp->fpn = fpn;
+    newfp->fp_next = NULL;
+    newfp->owner = NULL; // Sẽ được cập nhật trong vmap_page_range
+
+    // Thêm vào danh sách used_fp_list của mram
+    newfp->fp_next = caller->mram->used_fp_list;
+    caller->mram->used_fp_list = newfp;
+
+    // Thêm vào danh sách frm_lst
+    if (*frm_lst == NULL) {
+        *frm_lst = newfp;
+        tail = newfp;
+    } else {
+        tail->fp_next = newfp;
+        tail = newfp;
+    }
+  }
  
    return 0;
  }

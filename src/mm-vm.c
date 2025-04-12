@@ -54,14 +54,26 @@ struct vm_rg_struct *get_vm_area_node_at_brk(struct pcb_t *caller, int vmaid, in
 {
   struct vm_rg_struct * newrg;
   /* TODO retrive current vma to obtain newrg, current comment out due to compiler redundant warning*/
-  //struct vm_area_struct *cur_vma = get_vma_by_num(caller->mm, vmaid);
+  struct vm_area_struct *cur_vma = get_vma_by_num(caller->mm, vmaid);
+  if (cur_vma == NULL) {
+    return NULL; // VMA không tồn tại
+  }
 
   newrg = malloc(sizeof(struct vm_rg_struct));
-
+  if (newrg == NULL) {
+    return NULL; // Không thể cấp phát
+  }
   /* TODO: update the newrg boundary
   // newrg->rg_start = ...
   // newrg->rg_end = ...
   */
+  newrg->rg_start = cur_vma->sbrk;
+  newrg->rg_end = newrg->rg_start + alignedsz;
+
+  if (newrg->rg_end > (1UL << PAGING_CPU_BUS_WIDTH)) {
+    free(newrg);
+    return NULL; // Vượt quá không gian địa chỉ
+  }
 
   return newrg;
 }
@@ -75,9 +87,27 @@ struct vm_rg_struct *get_vm_area_node_at_brk(struct pcb_t *caller, int vmaid, in
  */
 int validate_overlap_vm_area(struct pcb_t *caller, int vmaid, int vmastart, int vmaend)
 {
-  //struct vm_area_struct *vma = caller->mm->mmap;
+  struct vm_area_struct *vma = caller->mm->mmap;
 
   /* TODO validate the planned memory area is not overlapped */
+  while (vma != NULL) {
+    if (vma->vm_id != vmaid) {
+        if (vmastart < vma->vm_end && vmaend > vma->vm_start) {
+            return -1; // Có chồng lấn
+        }
+    }
+    vma = vma->vm_next;
+  }
+
+// Kiểm tra chồng lấn với symrgtbl (bảng biểu tượng)
+  for (int i = 0; i < PAGING_MAX_SYMTBL_SZ; i++) {
+      struct vm_rg_struct *symrg = &caller->mm->symrgtbl[i];
+      if (symrg->rg_start != 0 || symrg->rg_end != 0) { // Chỉ kiểm tra nếu vùng không rỗng
+          if (vmastart < symrg->rg_end && vmaend > symrg->rg_start) {
+              return -1; // Chồng lấn với vùng trong symrgtbl
+          }
+      }
+  }
 
   return 0;
 }
@@ -105,6 +135,8 @@ int inc_vma_limit(struct pcb_t *caller, int vmaid, int inc_sz)
   /* TODO: Obtain the new vm area based on vmaid */
   //cur_vma->vm_end... 
   // inc_limit_ret...
+  cur_vma->vm_end = area->rg_end; // Cập nhật vm_end
+  cur_vma->sbrk = area->rg_end;
 
   if (vm_map_ram(caller, area->rg_start, area->rg_end, 
                     old_end, incnumpage , newrg) < 0)
