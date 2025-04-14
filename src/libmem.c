@@ -97,7 +97,7 @@ int __alloc(struct pcb_t *caller, int vmaid, int rgid, int size, int *alloc_addr
   /*Attempt to increate limit to get space */
   //struct vm_area_struct *cur_vma = get_vma_by_num(caller->mm, vmaid);
   int inc_sz = PAGING_PAGE_ALIGNSZ(size); /* Align size to page boundary */
-  int old_sbrk = cur_vma->sbrk;
+  // unsigned long old_sbrk = cur_vma->sbrk;
 
   //int inc_sz = PAGING_PAGE_ALIGNSZ(size);
   //int inc_limit_ret;
@@ -514,7 +514,7 @@ int find_victim_page(struct mm_struct *mm, int *retpgn)
   if (pg == NULL) {
     return -1; /* No pages available */
   }
-  *retpgn = pg->pg_num;
+  *retpgn = pg->pgn;
   mm->fifo_pgn = pg->pg_next;
 
   free(pg);
