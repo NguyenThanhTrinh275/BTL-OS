@@ -13,6 +13,8 @@ static struct queue_t running_list;
 #ifdef MLQ_SCHED
 static struct queue_t mlq_ready_queue[MAX_PRIO];
 static int slot[MAX_PRIO];
+__thread int curr_prio = 0;
+__thread int curr_slot = 0;
 #endif
 
 int queue_empty(void) {
@@ -53,8 +55,8 @@ struct pcb_t * get_mlq_proc(void) {
 	 * */
 	pthread_mutex_lock(&queue_lock);
 
-    static int curr_prio = 0; // Lưu mức độ ưu tiên hiện tại (stateful)
-    static int curr_slot = 0; // Lưu số slot còn lại của mức độ ưu tiên hiện tại
+    // static int curr_prio = 0; // Lưu mức độ ưu tiên hiện tại (stateful)
+    // static int curr_slot = 0; // Lưu số slot còn lại của mức độ ưu tiên hiện tại
 
     // Nếu slot hiện tại đã hết, chuyển sang mức độ ưu tiên tiếp theo
     if (curr_slot <= 0) {
