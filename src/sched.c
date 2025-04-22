@@ -64,6 +64,7 @@ struct pcb_t * get_mlq_proc(void) {
         curr_slot = slot[curr_prio]; // Reset slot
     }
 
+	
     // Tìm hàng đợi không rỗng, bắt đầu từ curr_prio
     int start_prio = curr_prio;
     do {

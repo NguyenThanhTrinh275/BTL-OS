@@ -55,6 +55,7 @@ return proc;
         q->size--;
         
         return proc;
+        
 #endif
 }
 
