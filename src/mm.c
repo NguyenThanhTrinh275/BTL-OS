@@ -116,10 +116,9 @@
     fpit->owner = caller->mm;
 
     /* Tracking for later page replacement */
-    enlist_pgn_node(&caller->mm->fifo_pgn, pgn + pgit);
-
     fpit = fpit->fp_next; // Chuyển sang khung trang tiếp theo
   }
+  enlist_pgn_node(&caller->mm->fifo_pgn, pgn + pgit);
   return 0;  
 }
  
@@ -260,35 +259,33 @@
   * @mm:     self mm
   * @caller: mm owner
   */
- int init_mm(struct mm_struct *mm, struct pcb_t *caller)
- {
-   struct vm_area_struct *vma0 = malloc(sizeof(struct vm_area_struct));
- 
-   mm->pgd = malloc(PAGING_MAX_PGN * sizeof(uint32_t));
- 
-   /* By default the owner comes with at least one vma */
-   vma0->vm_id = 0;
-   vma0->vm_start = 0;
-   vma0->vm_end = vma0->vm_start;
-   vma0->sbrk = vma0->vm_start;
-   struct vm_rg_struct *first_rg = init_vm_rg(vma0->vm_start, vma0->vm_end);
-   enlist_vm_rg_node(&vma0->vm_freerg_list, first_rg);
- 
-   /* TODO update VMA0 next */
-   // vma0->next = ...
- 
-   /* Point vma owner backward */
-    vma0->vm_next = NULL;
-    vma0->vm_mm = mm; 
-    /* point back to vma owner */
-    mm->mmap = vma0;
+int init_mm(struct mm_struct *mm, struct pcb_t *caller)
+{
+  struct vm_area_struct *vma0 = malloc(sizeof(struct vm_area_struct));
 
- 
-   /* TODO: update mmap */
-   //mm->mmap = ...
- 
-   return 0;
- }
+  mm->pgd = malloc(PAGING_MAX_PGN * sizeof(uint32_t));
+
+  /* By default the owner comes with at least one vma */
+  vma0->vm_id = 0;
+  vma0->vm_start = 0;
+  vma0->vm_end = vma0->vm_start;
+  vma0->sbrk = vma0->vm_start;
+  struct vm_rg_struct *first_rg = init_vm_rg(vma0->vm_start, vma0->vm_end);
+  enlist_vm_rg_node(&vma0->vm_freerg_list, first_rg);
+
+  /* TODO update VMA0 next */
+  // vma0->next = ...
+  vma0->vm_next = malloc(sizeof(struct vm_area_struct));
+  vma0->vm_next->vm_id = 1;
+  /* Point vma owner backward */
+  vma0->vm_mm = mm; 
+
+  /* TODO: update mmap */
+  //mm->mmap = ...
+  mm->mmap = vma0;
+  mm->mmap->vm_freerg_list = NULL;
+  return 0;
+}
  
  struct vm_rg_struct *init_vm_rg(int rg_start, int rg_end)
  {
