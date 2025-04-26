@@ -163,15 +163,14 @@ int MEMPHY_dump(struct memphy_struct *mp)
   /*TODO dump memphy contnt mp->storage
    *     for tracing the memory content
    */
-  printf("MEMPHY_DUMP:\n");
-   for (int i = 0; i < mp->maxsz; ++i)
-      {
-         if (mp->storage[i] != 0)
-         {
-            printf("BYTE %08x: %d\n", i, mp->storage[i]);
-         }
-      }
-   printf("--------------\n");
+  printf("===== PHYSICAL MEMORY DUMP =====\n");
+   uint32_t* word_storage = (uint32_t*)mp->storage;
+   int i;
+   for (i = 0; i < mp->maxsz / 4; i++){
+       if (word_storage[i] != 0)
+           printf("%08x: %08x\n", i * 4, word_storage[i]);
+   }
+   printf("===== END OF PHYSICAL MEMORY DUMP =====\n");
    
    return 0;
 }

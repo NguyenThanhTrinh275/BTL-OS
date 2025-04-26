@@ -67,13 +67,20 @@ struct vm_rg_struct *get_vm_area_node_at_brk(struct pcb_t *caller, int vmaid, in
   // newrg->rg_start = ...
   // newrg->rg_end = ...
   */
-  newrg->rg_start = cur_vma->sbrk;
-  newrg->rg_end = newrg->rg_start + alignedsz;
-  newrg->rg_next = NULL;
-  if (newrg->rg_end > (1UL << PAGING_CPU_BUS_WIDTH)) {
-    free(newrg);
-    return NULL; // Vượt quá không gian địa chỉ
-  }
+ if (vmaid == 0)
+ {
+   newrg->rg_start = cur_vma->sbrk;
+   newrg->rg_end = cur_vma->sbrk + alignedsz - 1;
+ }
+ else if (vmaid == 1)
+ {
+   newrg->rg_start = cur_vma->sbrk;
+   newrg->rg_end = cur_vma->sbrk - alignedsz + 1;
+ }
+ else
+ {
+   newrg->rg_start = newrg->rg_end = -1;
+ }
 
   return newrg;
 }
@@ -87,24 +94,16 @@ struct vm_rg_struct *get_vm_area_node_at_brk(struct pcb_t *caller, int vmaid, in
  */
 int validate_overlap_vm_area(struct pcb_t *caller, int vmaid, int vmastart, int vmaend)
  {
-   if (vmastart >= vmaend){
-     return -1;
-   }
-   struct vm_area_struct *cur_area = get_vma_by_num(caller->mm, vmaid);
-   if (cur_area == NULL){
-     return -1;
-   }
-   struct vm_area_struct *vma = caller->mm->mmap;
-   /* TODO validate the planned memory area is not overlapped */
-   while (vma != NULL){
-     if (vma != cur_area){
-       if (OVERLAP(vmastart, vmaend, vma->vm_start, vma->vm_end)){
-         return -1;
-       }
-     }
-     vma = vma->vm_next;
-   }
-   return 0;
+  struct vm_area_struct *vma = caller->mm->mmap;
+  while (vma != NULL) {
+    if (vma->vm_start != vma->vm_end) {
+      if (!(vmaend < vma->vm_start || vmastart > vma->vm_end)) {
+        return -1; // Overlap detected
+      }
+    }
+    vma = vma->vm_next;
+  }
+  return 0;
  }
 
 /*inc_vma_limit - increase vm area limits to reserve space for new variable
@@ -121,21 +120,47 @@ int inc_vma_limit(struct pcb_t *caller, int vmaid, int inc_sz)
   struct vm_rg_struct *area = get_vm_area_node_at_brk(caller, vmaid, inc_sz, inc_amt);
   struct vm_area_struct *cur_vma = get_vma_by_num(caller->mm, vmaid);
 
+  if (area == NULL) {
+    free(newrg);
+    return -1;
+  }
+  if (cur_vma == NULL) {
+    free(newrg);
+    return -1;
+  }
+
+
   int old_end = cur_vma->vm_end;
 
   /*Validate overlap of obtained region */
-  if (validate_overlap_vm_area(caller, vmaid, area->rg_start, area->rg_end) < 0)
-    return -1; /*Overlap and failed allocation */
+  if (validate_overlap_vm_area(caller, vmaid, area->rg_start, area->rg_end) < 0){
+    free(newrg);
+    return -1;} /*Overlap and failed allocation */
 
   /* TODO: Obtain the new vm area based on vmaid */
-  //cur_vma->vm_end... 
+
   // inc_limit_ret...
-  if (vm_map_ram(caller, area->rg_start, area->rg_end, 
-    old_end, incnumpage , newrg) < 0)
-      return -1; /* Map the memory to MEMRAM */
-   cur_vma->sbrk += inc_amt;
-   cur_vma->vm_end = cur_vma->sbrk;
+  /* Cập nhật giới hạn vma */
+    cur_vma->vm_end = cur_vma->vm_end + inc_amt;
+    cur_vma->sbrk = area->rg_end;
    
+  if (vm_map_ram(caller, area->rg_start, area->rg_end, old_end, incnumpage, newrg) < 0){
+    free(newrg);
+    return -1; /* Map the memory to MEMRAM */
+  }
+
+  if (vmaid == 0) {
+    cur_vma->sbrk += inc_amt;
+  }
+  else if (vmaid == 1){ 
+    cur_vma->sbrk -= inc_amt;
+  }
+  else{
+    free(newrg);
+    return -1;
+  }
+
+  free(newrg);  
   return 0;
 }
 

@@ -96,8 +96,7 @@
    //ret_rg->rg_start = ...
    //ret_rg->vmaid = ...
    */
-  ret_rg->rg_start = addr;
-  ret_rg->rg_end = addr + pgnum * PAGING_PAGESZ;
+  ret_rg->rg_end =  ret_rg->rg_start = addr;
  
   /* TODO map range of frame to address space
     *      [addr to addr + pgnum*PAGING_PAGESZ
@@ -106,19 +105,17 @@
   //
   for (pgit = 0; pgit < pgnum; pgit++) {
     if (fpit == NULL) {
+        ret_rg->rg_end = addr + pgit * PAGING_PAGESZ;
         return -1; // Không đủ khung trang
     }
 
+    int fpn = fpit->fpn;
     uint32_t *pte = &caller->mm->pgd[pgn + pgit];
-    init_pte(pte, 1, fpit->fpn, 0, 0, 0, 0); // present=1, fpn=fpit->fpn, không swap
-
-    // Cập nhật owner của khung trang
-    fpit->owner = caller->mm;
-
-    /* Tracking for later page replacement */
-    fpit = fpit->fp_next; // Chuyển sang khung trang tiếp theo
+    pte_set_fpn(pte, fpn);
+    fpit = fpit->fp_next;
+    enlist_pgn_node(&caller->mm->fifo_pgn, pgn + pgit);
   }
-  enlist_pgn_node(&caller->mm->fifo_pgn, pgn + pgit);
+  ret_rg->rg_end = addr + pgit * PAGING_PAGESZ;
   return 0;  
 }
  
@@ -129,63 +126,41 @@
   * @frm_lst   : frame list
   */
  
- int alloc_pages_range(struct pcb_t *caller, int req_pgnum, struct framephy_struct **frm_lst)
+int alloc_pages_range(struct pcb_t *caller, int req_pgnum, struct framephy_struct **frm_lst)
  {
-   int pgit, fpn;
-   struct framephy_struct *newfp = NULL;
-   struct framephy_struct *tail = NULL;
- 
-   /* TODO: allocate the page 
-   //caller-> ...
-   //frm_lst-> ...
+  int pgit, fpn;
+  struct framephy_struct *newfp_head = NULL;
+
+  /* TODO: allocate the page 
+  //caller-> ...
+  //frm_lst-> ...
+  */
+   int ret_val = 0;
+
+  for (pgit = 0; pgit < req_pgnum; pgit++)
+  {
+  /* TODO: allocate the page 
    */
-  *frm_lst = NULL;
+    if (MEMPHY_get_freefp(caller->mram, &fpn) == 0)
+    { 
+      struct framephy_struct *newfp_node = malloc(sizeof(struct framephy_struct));
+      newfp_node->fpn = fpn;
+      newfp_node->owner = caller->mm;
+      newfp_node->fp_next = newfp_head;
+      newfp_head = newfp_node;
 
- 
-  for (pgit = 0; pgit < req_pgnum; pgit++) {
-    if (MEMPHY_get_freefp(caller->mram, &fpn) != 0) {
-        // Không đủ khung trang, giải phóng các khung đã cấp phát
-        while (*frm_lst != NULL) {
-            newfp = *frm_lst;
-            *frm_lst = newfp->fp_next;
-            MEMPHY_put_freefp(caller->mram, newfp->fpn);
-            free(newfp);
-        }
-        return -3000; // Out of memory
+      newfp_head = newfp_node;  
     }
-
-    // Tạo node mới cho khung trang
-    newfp = malloc(sizeof(struct framephy_struct));
-    if (newfp == NULL) {
-        // Lỗi cấp phát bộ nhớ, giải phóng các khung đã cấp phát
-        while (*frm_lst != NULL) {
-            newfp = *frm_lst;
-            *frm_lst = newfp->fp_next;
-            MEMPHY_put_freefp(caller->mram, newfp->fpn);
-            free(newfp);
-        }
-        return -1; // Lỗi cấp phát
-    }
-
-    newfp->fpn = fpn;
-    newfp->fp_next = NULL;
-    newfp->owner = NULL; // Sẽ được cập nhật trong vmap_page_range
-
-    // Thêm vào danh sách used_fp_list của mram
-    newfp->fp_next = caller->mram->used_fp_list;
-    caller->mram->used_fp_list = newfp;
-
-    // Thêm vào danh sách frm_lst
-    if (*frm_lst == NULL) {
-        *frm_lst = newfp;
-        tail = newfp;
-    } else {
-        tail->fp_next = newfp;
-        tail = newfp;
+    else
+    { 
+      ret_val = -3000;
+      break;
     }
   }
- 
-   return 0;
+
+  *frm_lst = newfp_head;
+
+	return ret_val;
  }
  
  /*
@@ -275,15 +250,13 @@ int init_mm(struct mm_struct *mm, struct pcb_t *caller)
 
   /* TODO update VMA0 next */
   // vma0->next = ...
-  vma0->vm_next = malloc(sizeof(struct vm_area_struct));
-  vma0->vm_next->vm_id = 1;
+  vma0->vm_next = NULL;
   /* Point vma owner backward */
   vma0->vm_mm = mm; 
 
   /* TODO: update mmap */
   //mm->mmap = ...
   mm->mmap = vma0;
-  mm->mmap->vm_freerg_list = NULL;
   return 0;
 }
  
@@ -401,6 +374,12 @@ int init_mm(struct mm_struct *mm, struct pcb_t *caller)
    {
      printf("%08ld: %08x\n", pgit * sizeof(uint32_t), caller->mm->pgd[pgit]);
    }
+
+   for (pgit = pgn_start; pgit < pgn_end; pgit++)
+  {
+    int fpn = PAGING_FPN(caller->mm->pgd[pgit]);
+    printf("Page Number: %d -> Frame Number: %d\n", pgit, fpn);
+  }
  
    return 0;
  }
