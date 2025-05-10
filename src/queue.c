@@ -24,7 +24,18 @@ struct pcb_t * dequeue(struct queue_t * q) {
 	if (q == NULL || q->size == 0) {
                 return NULL; // Hàng đợi rỗng
         }
-        
+#ifdef MLQ_SCHED // neu dung flag mlq lay process dau tien cua tung hang doi
+        struct pcb_t *proc = q->proc[0];
+                
+        // Dịch chuyển các phần tử phía sau để xóa tiến trình
+        for (int i = 0; i < q->size - 1; i++) {
+                q->proc[i] = q->proc[i + 1];
+        }
+        q->proc[q->size - 1] = NULL; // Đặt phần tử cuối thành NULL
+        q->size--;
+
+return proc;
+#else
         // Tìm tiến trình có độ ưu tiên cao nhất (prio nhỏ nhất)
         int highest_prio_idx = 0;
         for (int i = 1; i < q->size; i++) {
@@ -44,5 +55,7 @@ struct pcb_t * dequeue(struct queue_t * q) {
         q->size--;
         
         return proc;
+        
+#endif
 }
 
